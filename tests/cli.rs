@@ -32,7 +32,7 @@ fn project() -> TempDir {
     )
     .unwrap();
     fs::write(
-        dir.path().join("src/aux.py"),
+        dir.path().join("src/refund_ui.py"),
         "# UI for refunds\n# @mark payments.refund role=ui\n\
          def refund_page():\n    pass\n",
     )
@@ -49,7 +49,7 @@ fn project() -> TempDir {
     .unwrap();
     git(
         dir.path(),
-        &["add", ".gitignore", "src/main.rs", "src/aux.py"],
+        &["add", ".gitignore", "src/main.rs", "src/refund_ui.py"],
     );
     dir
 }
@@ -79,7 +79,7 @@ fn tracked_files_are_default_and_repeated_labels_are_allowed() {
     let text = stdout(&result);
     assert_eq!(text.matches("payments.refund").count(), 3);
     assert!(text.contains("src/main.rs"));
-    assert!(text.contains("src/aux.py"));
+    assert!(text.contains("src/refund_ui.py"));
     assert!(!text.contains("vendor"));
     assert!(!text.contains("untracked"));
     let checked = run(root.path(), &["check"]);
@@ -111,7 +111,7 @@ fn chinese_search_finds_nearby_documentation() {
     assert!(output.status.success());
     let text = stdout(&output);
     assert!(text.contains("src/main.rs"));
-    assert!(!text.contains("src/aux.py"));
+    assert!(!text.contains("src/refund_ui.py"));
 }
 
 #[test]
