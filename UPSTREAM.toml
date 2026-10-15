@@ -1,0 +1,6 @@
+# markref is the original project. It is its own direct upstream.
+schema_version = 1
+license = "LicenseRef-AUL-1.0-draft.1"
+repository = "https://github.com/LIghtJUNction/markref"
+mode = "independent"
+upstream = "https://github.com/LIghtJUNction/markref"

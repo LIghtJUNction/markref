@@ -1,0 +1,21 @@
+[package]
+name = "markref"
+version = "0.1.0"
+edition = "2021"
+description = "Read-only CLI for shared feature marks in source comments"
+repository = "https://github.com/LIghtJUNction/markref"
+readme = "README.md"
+license-file = "LICENSE.txt"
+keywords = ["cli", "source-code", "comments", "navigation"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+memchr = "2.7"
+rayon = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3.14"
