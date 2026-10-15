@@ -54,7 +54,7 @@ fn request_refund() {}
 ~~~
 
 The minimum syntax is `// @mark payments.refund`. All fields are
-optional. v0.1 understands `role` and `contract`. Fields are
+optional. Supported fields are `role` and `contract`. Fields are
 space-separated `key=value` tokens without spaces in values.
 Feature labels use ASCII letters, digits, underscores, hyphens, and
 dots with no empty segments. Roles are user-defined.
@@ -66,6 +66,8 @@ The same `contract` means both marks refer to a named contract; it does
 ## Commands
 
 ~~~sh
+markref list                                  # discover labels, counts and roles
+markref list --json
 markref find "refund"                         # free-text substring search
 markref find "退款"                           # finds nearby comments
 markref show payments.refund                   # every location for this label
@@ -82,9 +84,15 @@ markref --include-untracked find "refund"
 Output includes path, marker line, nearby target line, probable symbol,
 role, contract, and adjacent existing source comments. `find` searches
 those fields case-insensitively. `show` uses exact label equality.
+`list` aggregates repeated labels and sorts labels/roles deterministically.
+Adjacent comment blocks are joined in source order, bounded to eight lines and
+180 characters, instead of taking just the last line. Blank lines separate blocks.
+Navigation commands warn on stderr when scan diagnostics exist; JSON stdout
+remains clean. Run `check --json` to inspect all errors and warnings.
+
 `check` returns a nonzero status when a mark is invalid or cannot bind
 to code. Repeated labels are valid and are not errors. `context` stays
-compact unless `--expand` is set.
+compact unless `--expand` is set; `--max-bytes` bounds stdout, not stderr diagnostics.
 
 ## Scanning behavior
 

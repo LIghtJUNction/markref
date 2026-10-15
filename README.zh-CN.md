@@ -25,6 +25,8 @@ fn request_refund() {}
 cargo install markref --locked
 # 安装当前源码：
 cargo install --path . --locked
+markref list                         # 先发现标签、位置数和职责
+markref list --json
 markref find "退款"                  # 搜索标签、相邻注释、符号等
 markref show payments.refund         # 聚合同标签的全部位置
 markref check                        # 检查格式与无法关联代码的位置
@@ -52,6 +54,11 @@ cp LICENSE.txt UPSTREAM.toml "${CODEX_HOME:-$HOME/.codex}/skills/markref/"
 同一份 `SKILL.md`。技能本身不会擅自给源码添加标记。
 
 ## 扫描范围
+
+`list` 聚合同标签的位置数与不同职责，按标签和职责排序。摘要按源码顺序合并
+相邻注释，最多读取 8 行、输出 180 个字符，空行分隔不同注释块。
+搜索和定位发现扫描诊断时会在 stderr 提醒，JSON stdout 保持可解析；
+用 `check --json` 查看完整错误和警告。`--max-bytes` 约束 stdout，不含 stderr。
 
 默认仅扫描当前 Git 项目中已跟踪的源码。使用
 `--include-untracked` 才加入未跟踪文件，但仍遵守 Git 忽略规则

@@ -1,6 +1,11 @@
 mod scan;
 
-use std::path::PathBuf;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
+
+use serde::Serialize;
 
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
@@ -13,7 +18,7 @@ use scan::{Mark, Report};
     about = "Locate shared feature marks in source comments"
 )]
 struct Cli {
-    /// Directory within the Git project to scan.
+    /// Directory within a Git worktree; scans the whole worktree.
     #[arg(long, global = true, default_value = ".", value_name = "DIR")]
     root: PathBuf,
 
@@ -35,6 +40,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// List feature labels with location counts and roles.
+    List,
     /// Search marks by label, nearby documentation, file, symbol, role, or contract.
     Find {
         /// Case-insensitive search text, including Unicode.
@@ -76,7 +83,18 @@ fn run() -> Result<()> {
         include_snippets,
     )?;
 
+    if !matches!(&cli.command, Commands::Check) && !report.diagnostics.is_empty() {
+        let errors = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == "error")
+            .count();
+        let warnings = report.diagnostics.len() - errors;
+        eprintln!("warning: scan found {errors} errors and {warnings} warnings; results may be incomplete (run markref check)");
+    }
+
     match cli.command {
+        Commands::List => print_labels(&report.marks, cli.json)?,
         Commands::Find { query } => {
             let found: Vec<&Mark> = report
                 .marks
@@ -84,7 +102,7 @@ fn run() -> Result<()> {
                 .filter(|mark| scan::matches_query(mark, &query))
                 .collect();
             if found.is_empty() {
-                bail!("no marks found for query: {query}");
+                bail!("no marks found for query: {query}; use 'markref list' to discover labels or rg to search unmarked code");
             }
             print_marks(&found, cli.json)?;
         }
@@ -153,9 +171,49 @@ fn by_label<'a>(report: &'a Report, label: &str) -> Result<Vec<&'a Mark>> {
         .filter(|mark| mark.label == label)
         .collect();
     if found.is_empty() {
-        bail!("no marks found for label: {label}");
+        bail!("no marks found for label: {label}; use 'markref list' to discover exact labels");
     }
     Ok(found)
+}
+
+#[derive(Serialize)]
+struct LabelSummary<'a> {
+    label: &'a str,
+    locations: usize,
+    roles: BTreeSet<&'a str>,
+}
+
+fn print_labels(marks: &[Mark], json: bool) -> Result<()> {
+    let mut labels = BTreeMap::new();
+    for mark in marks {
+        let summary = labels
+            .entry(mark.label.as_str())
+            .or_insert_with(|| LabelSummary {
+                label: &mark.label,
+                locations: 0,
+                roles: BTreeSet::new(),
+            });
+        summary.locations += 1;
+        if let Some(role) = &mark.role {
+            summary.roles.insert(role.as_str());
+        }
+    }
+    let labels = labels.into_values().collect::<Vec<_>>();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&labels)?);
+    } else if labels.is_empty() {
+        println!("No feature marks found in scanned source.");
+    } else {
+        for summary in labels {
+            let roles = summary.roles.iter().copied().collect::<Vec<_>>().join(",");
+            let roles = if roles.is_empty() { "-" } else { &roles };
+            println!(
+                "{}  locations={} roles={}",
+                summary.label, summary.locations, roles
+            );
+        }
+    }
+    Ok(())
 }
 
 fn print_marks(marks: &[&Mark], json: bool) -> Result<()> {

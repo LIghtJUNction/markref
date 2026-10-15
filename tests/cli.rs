@@ -211,3 +211,67 @@ fn json_context_budget_includes_trailing_newline() {
     let value: serde_json::Value = serde_json::from_slice(&bounded.stdout).unwrap();
     assert!(value["truncated"].as_bool().unwrap());
 }
+
+#[test]
+fn list_discovers_labels_and_aggregates_roles() {
+    let root = project();
+    fs::write(
+        root.path().join("src/other.go"),
+        "package sample\n// @mark accounts.session role=handler\nfunc Session() {}\n",
+    )
+    .unwrap();
+    git(root.path(), &["add", "src/other.go"]);
+    let output = run(root.path(), &["list", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let labels: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(labels.as_array().unwrap().len(), 2);
+    assert_eq!(labels[0]["label"], "accounts.session");
+    assert_eq!(labels[1]["label"], "payments.refund");
+    assert_eq!(labels[1]["locations"], 3);
+    assert_eq!(
+        labels[1]["roles"],
+        serde_json::json!(["authority", "caller", "ui"])
+    );
+    let untracked = run(root.path(), &["--include-untracked", "list", "--json"]);
+    assert!(untracked.status.success());
+    let labels: serde_json::Value = serde_json::from_slice(&untracked.stdout).unwrap();
+    assert_eq!(labels[1]["locations"], 4);
+    assert!(!stdout(&untracked).contains("vendor"));
+}
+
+#[test]
+fn list_empty_project_is_a_valid_empty_result() {
+    let root = tempfile::tempdir().unwrap();
+    git(root.path(), &["init", "-q"]);
+    let output = run(root.path(), &["list", "--json"]);
+    assert!(output.status.success());
+    assert_eq!(stdout(&output).trim(), "[]");
+}
+
+#[test]
+fn navigation_warns_about_invalid_marks_without_corrupting_json() {
+    let root = project();
+    fs::write(
+        root.path().join("src/broken.rs"),
+        "// @mark broken.label unexpected=value\nfn broken() {}\n",
+    )
+    .unwrap();
+    git(root.path(), &["add", "src/broken.rs"]);
+    for args in [
+        vec!["list", "--json"],
+        vec!["show", "payments.refund", "--json"],
+        vec!["find", "refund", "--json"],
+        vec!["context", "payments.refund", "--json"],
+    ] {
+        let output = run(root.path(), &args);
+        assert!(output.status.success());
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+        let warning = String::from_utf8_lossy(&output.stderr);
+        assert!(warning.contains("1 error"), "{warning}");
+        assert!(warning.contains("markref check"), "{warning}");
+    }
+}

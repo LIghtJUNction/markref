@@ -20,6 +20,8 @@ installation is within the user's request. The registry install is
 Choose the intended Git worktree explicitly when cwd is ambiguous:
 
 ```sh
+markref --root /path/to/project list
+markref --root /path/to/project list --json
 markref --root /path/to/project find "refund"
 markref --root /path/to/project show payments.refund --json
 markref --root /path/to/project context payments.refund --max-bytes 8000
@@ -27,12 +29,18 @@ markref --root /path/to/project context payments.refund --expand --max-bytes 800
 markref --root /path/to/project context payments.refund --json --max-bytes 8000
 ```
 
-Start with a compact context map. Expand only the relevant feature, then read
+If the label is unknown, start with `list`: it returns sorted feature labels,
+location counts and unique roles. It includes only scanned marks, not a list of
+all implemented features. Then use a compact context map. Expand only the relevant feature, then read
 its actual implementation, callers and tests. Byte limits are not token limits.
 Use JSON context's `truncated` flag to distinguish a complete result from a
 bounded excerpt; even a nontruncated result covers only scanned marks.
 
 `find` searches mark metadata and adjacent comments, not every source line.
+Summaries join up to eight adjacent comment lines, bounded to 180 characters;
+blank lines separate blocks. Navigation commands warn on stderr if the scan
+found diagnostics; JSON stdout remains machine-readable. Use `check --json`
+to inspect the complete diagnostic list before treating results as complete.
 No match exits nonzero; it does not prove the feature is absent. Fall back to
 `rg --files` for paths and `rg -n` for errors, routes, config keys and symbols.
 `--root` selects the containing Git worktree, not a subtree filter.
@@ -63,7 +71,8 @@ Place marks beside existing documentation and code. Labels use ASCII letters,
 digits, underscores, hyphens and dots, without empty segments; each segment
 starts with a letter or digit. Fields are whitespace-separated `key=value`
 tokens without spaces in values. Only `role` and `contract` are supported in
-v0.1; aliases, summaries and explicit symbol fields are not supported syntax.
+the current version; aliases, summaries and explicit symbol fields are not
+supported syntax.
 Keep descriptions in adjacent ordinary comments instead.
 
 Reuse labels freely: authority, caller, UI and tests can all share a feature.

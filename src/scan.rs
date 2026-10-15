@@ -504,9 +504,16 @@ fn find_target(
 
 fn plain_comment(line: &str, syntax: Syntax) -> Option<&str> {
     let s = line.trim();
+    if matches!(s, "*/" | "-->") {
+        return None;
+    }
     let s = match syntax {
         Syntax::Slash => s
-            .strip_prefix("//")
+            .strip_prefix("///")
+            .or_else(|| s.strip_prefix("//!"))
+            .or_else(|| s.strip_prefix("//"))
+            .or_else(|| s.strip_prefix("/**"))
+            .or_else(|| s.strip_prefix("/*!"))
             .or_else(|| s.strip_prefix("/*"))
             .or_else(|| s.strip_prefix('*')),
         Syntax::Hash => s.strip_prefix('#'),
@@ -526,26 +533,48 @@ fn plain_comment(line: &str, syntax: Syntax) -> Option<&str> {
 }
 
 fn nearby_summary(lines: &[&str], marker_idx: usize, syntax: Syntax) -> Option<String> {
-    for distance in 1..=4 {
-        if let Some(idx) = marker_idx.checked_sub(distance) {
-            if let Some(comment) = plain_comment(lines[idx], syntax) {
-                return Some(comment.chars().take(180).collect());
-            }
-            if !is_comment_only(lines[idx], syntax) {
+    // Preserve the meaning of a nearby comment block, not just its final line.
+    // Adjacent feature marks can share documentation, but blank lines and code
+    // separate blocks. Keep scanning and output bounded even for huge comments.
+    let mut comments = Vec::new();
+    for line in lines[..marker_idx].iter().rev().take(8) {
+        if line.trim().is_empty() || !is_comment_only(line, syntax) {
+            break;
+        }
+        if let Some(comment) = plain_comment(line, syntax) {
+            comments.push(comment);
+        }
+    }
+    comments.reverse();
+    if comments.is_empty() {
+        for line in lines.iter().skip(marker_idx + 1).take(8) {
+            if line.trim().is_empty() || !is_comment_only(line, syntax) {
                 break;
+            }
+            if let Some(comment) = plain_comment(line, syntax) {
+                comments.push(comment);
             }
         }
     }
-    let end = lines.len().min(marker_idx + 5);
-    for candidate in lines.iter().take(end).skip(marker_idx + 1) {
-        if let Some(comment) = plain_comment(candidate, syntax) {
-            return Some(comment.chars().take(180).collect());
+    if comments.is_empty() {
+        return None;
+    }
+    let mut summary = String::new();
+    let mut remaining = 180;
+    for comment in comments {
+        if !summary.is_empty() && remaining > 0 {
+            summary.push(' ');
+            remaining -= 1;
         }
-        if !is_comment_only(candidate, syntax) {
+        for ch in comment.chars().take(remaining) {
+            summary.push(ch);
+            remaining -= 1;
+        }
+        if remaining == 0 {
             break;
         }
     }
-    None
+    Some(summary)
 }
 
 fn symbol_from_line(line: &str) -> Option<String> {
@@ -701,5 +730,40 @@ mod tests {
     fn does_not_bind_across_closing_braces() {
         let result = scan_text("fn foo() {\n  // @mark broken\n}\n", "unbound.rs");
         assert_eq!(result.diagnostics.len(), 1);
+    }
+    #[test]
+    fn summaries_keep_multiline_meaning_across_adjacent_marks() {
+        let result = scan_text("// StartWorkers is explicit and runs after listener readiness.\n// One bounded recovery batch shares host admission.\n// @mark extensions.admission role=consumer\n// @mark extensions.recovery role=scheduler\nfunc StartWorkers() {}\n", "summary.go");
+        assert_eq!(result.marks.len(), 2);
+        for mark in &result.marks {
+            assert_eq!(mark.summary.as_deref(), Some("StartWorkers is explicit and runs after listener readiness. One bounded recovery batch shares host admission."));
+            assert!(matches_query(mark, "listener readiness"));
+        }
+    }
+
+    #[test]
+    fn summaries_normalize_doc_comments_and_stop_at_blank_boundaries() {
+        let result = scan_text("// Unrelated earlier note.\n\n/// Retry a rolled-back reservation.\n/// Preserve the original worker.\n// @mark model.retry\nasync fn retry() {}\n\n// @mark next.feature\n// Description after marker.\n// Second description line.\nfn next() {}\n", "doc_summary.rs");
+        assert_eq!(
+            result.marks[0].summary.as_deref(),
+            Some("Retry a rolled-back reservation. Preserve the original worker.")
+        );
+        assert_eq!(
+            result.marks[1].summary.as_deref(),
+            Some("Description after marker. Second description line.")
+        );
+    }
+
+    #[test]
+    fn summaries_stay_unicode_bounded() {
+        let source = format!(
+            "# {}\n# {}\n# @mark feature.bound\ndef bounded(): pass\n",
+            "界".repeat(150),
+            "面".repeat(150)
+        );
+        let result = scan_text(&source, "summary_bound.py");
+        let summary = result.marks[0].summary.as_ref().unwrap();
+        assert_eq!(summary.chars().count(), 180);
+        assert!(summary.starts_with('界'));
     }
 }
