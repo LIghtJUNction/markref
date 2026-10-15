@@ -22,7 +22,9 @@ fn request_refund() {}
 ## 安装与使用
 
 ~~~sh
-cargo install --git https://github.com/LIghtJUNction/markref
+cargo install markref --locked
+# 安装当前源码：
+cargo install --path . --locked
 markref find "退款"                  # 搜索标签、相邻注释、符号等
 markref show payments.refund         # 聚合同标签的全部位置
 markref check                        # 检查格式与无法关联代码的位置
@@ -31,6 +33,25 @@ markref context payments.refund --expand
 markref context payments.refund --max-bytes 8000
 markref show payments.refund --json
 ~~~
+
+
+## Agent 技能
+
+仓库维护 [markref 技能](skills/markref/SKILL.md)，包括有限长度上下文、跨语言
+定位、扫描范围及找不到标记时回退到 `rg`。安装 CLI 不会自动安装技能。
+
+首次安装 Codex 技能时，在本仓库执行以下命令；已有同名技能先检查差异再替换：
+
+~~~sh
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/markref "${CODEX_HOME:-$HOME/.codex}/skills/"
+cp LICENSE.txt UPSTREAM.toml "${CODEX_HOME:-$HOME/.codex}/skills/markref/"
+~~~
+
+重新加载 agent 会话后，可用 `$markref` 调用。其他 agent 按其技能目录约定加载
+同一份 `SKILL.md`。技能本身不会擅自给源码添加标记。
+
+## 扫描范围
 
 默认仅扫描当前 Git 项目中已跟踪的源码。使用
 `--include-untracked` 才加入未跟踪文件，但仍遵守 Git 忽略规则

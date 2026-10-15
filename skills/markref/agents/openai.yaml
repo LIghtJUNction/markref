@@ -1,0 +1,4 @@
+interface:
+  display_name: "markref"
+  short_description: "Find shared feature marks and bounded source context"
+  default_prompt: "Use $markref to locate this feature across components and inspect its implementation and tests."

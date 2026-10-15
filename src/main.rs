@@ -218,7 +218,8 @@ fn print_context_json(label: &str, marks: &[&Mark], max_bytes: usize) -> Result<
             "locations": included,
             "truncated": false
         });
-        if serde_json::to_vec(&candidate)?.len() > max_bytes {
+        // println! adds one byte outside the serialized JSON value.
+        if serde_json::to_vec(&candidate)?.len().saturating_add(1) > max_bytes {
             included.pop();
             truncated = true;
             break;
@@ -230,7 +231,7 @@ fn print_context_json(label: &str, marks: &[&Mark], max_bytes: usize) -> Result<
         "truncated": truncated
     });
     let output = serde_json::to_string(&value)?;
-    if output.len() > max_bytes {
+    if output.len().saturating_add(1) > max_bytes {
         bail!("--max-bytes is too small for the JSON header; increase the limit");
     }
     println!("{output}");

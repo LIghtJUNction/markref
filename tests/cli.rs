@@ -175,3 +175,39 @@ fn no_git_worktree_is_reported() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("not a Git worktree"));
 }
+
+#[test]
+fn json_context_budget_includes_trailing_newline() {
+    let root = project();
+    let full = run(
+        root.path(),
+        &[
+            "context",
+            "payments.refund",
+            "--json",
+            "--max-bytes",
+            "10000",
+        ],
+    );
+    assert!(full.status.success());
+    let budget = full.stdout.len() - 1;
+    let bounded = run(
+        root.path(),
+        &[
+            "context",
+            "payments.refund",
+            "--json",
+            "--max-bytes",
+            &budget.to_string(),
+        ],
+    );
+    assert!(bounded.status.success());
+    assert!(
+        bounded.stdout.len() <= budget,
+        "{} output bytes exceeded budget {}",
+        bounded.stdout.len(),
+        budget
+    );
+    let value: serde_json::Value = serde_json::from_slice(&bounded.stdout).unwrap();
+    assert!(value["truncated"].as_bool().unwrap());
+}

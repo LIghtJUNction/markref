@@ -13,12 +13,34 @@ appear at many places: an authority, caller, UI component, or test.
 Requires Rust and Git.
 
 ~~~sh
-cargo install --git https://github.com/LIghtJUNction/markref
+cargo install markref --locked
+# Or install this checkout:
+cargo install --path . --locked
 # Development:
 git clone https://github.com/LIghtJUNction/markref
 cd markref
 cargo run -- --help
 ~~~
+
+
+## Agent skill
+
+The maintained skill is [skills/markref/SKILL.md](skills/markref/SKILL.md).
+It covers bounded navigation, cross-language marks, real scan scope and
+fallback to `rg`. Installing the CLI does not install an agent skill.
+
+For a first Codex skill installation, run from this checkout (review an existing
+`markref` skill before replacing it):
+
+~~~sh
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/markref "${CODEX_HOME:-$HOME/.codex}/skills/"
+cp LICENSE.txt UPSTREAM.toml "${CODEX_HOME:-$HOME/.codex}/skills/markref/"
+~~~
+
+Reload the agent session to discover the new skill, then invoke `$markref` or
+ask it to locate a feature using source marks. Other agents can load the same
+`SKILL.md` according to their own skill-directory convention.
 
 ## Use existing source comments
 
