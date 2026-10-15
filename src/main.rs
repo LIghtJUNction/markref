@@ -65,6 +65,7 @@ fn main() {
     }
 }
 
+// @mark markref.cli role=authority
 fn run() -> Result<()> {
     let cli = Cli::parse();
     let include_snippets = matches!(&cli.command, Commands::Context { expand: true, .. });

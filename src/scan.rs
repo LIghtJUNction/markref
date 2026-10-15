@@ -35,7 +35,6 @@ pub struct Diagnostic {
 }
 
 pub struct Report {
-    pub root: PathBuf,
     pub files_scanned: usize,
     pub marks: Vec<Mark>,
     pub diagnostics: Vec<Diagnostic>,
@@ -71,6 +70,7 @@ fn syntax_for(path: &str) -> Option<Syntax> {
     }
 }
 
+// @mark markref.scan role=authority
 pub fn scan_project(
     start: &Path,
     include_untracked: bool,
@@ -138,7 +138,6 @@ pub fn scan_project(
     marks.sort_by(|a, b| (&a.path, a.line, &a.label).cmp(&(&b.path, b.line, &b.label)));
     diagnostics.sort_by(|a, b| (&a.path, a.line).cmp(&(&b.path, b.line)));
     Ok(Report {
-        root,
         files_scanned,
         marks,
         diagnostics,
@@ -489,8 +488,9 @@ fn find_target(
     {
         return Some(marker_idx);
     }
-    for idx in marker_idx + 1..lines.len().min(marker_idx + 25) {
-        let line = lines[idx].trim();
+    let end = lines.len().min(marker_idx + 25);
+    for (idx, candidate) in lines.iter().enumerate().take(end).skip(marker_idx + 1) {
+        let line = candidate.trim();
         if is_comment_only(line, syntax) || line.starts_with("#[") || line.starts_with('@') {
             continue;
         }
@@ -536,11 +536,12 @@ fn nearby_summary(lines: &[&str], marker_idx: usize, syntax: Syntax) -> Option<S
             }
         }
     }
-    for idx in marker_idx + 1..lines.len().min(marker_idx + 5) {
-        if let Some(comment) = plain_comment(lines[idx], syntax) {
+    let end = lines.len().min(marker_idx + 5);
+    for candidate in lines.iter().take(end).skip(marker_idx + 1) {
+        if let Some(comment) = plain_comment(candidate, syntax) {
             return Some(comment.chars().take(180).collect());
         }
-        if !is_comment_only(lines[idx], syntax) {
+        if !is_comment_only(candidate, syntax) {
             break;
         }
     }
@@ -605,8 +606,8 @@ fn code_snippet(lines: &[&str], mark: usize, target: usize) -> String {
     let from = mark.saturating_sub(1);
     let to = (target + 7).min(lines.len());
     let mut snippet = String::new();
-    for idx in from..to {
-        let display = lines[idx].chars().take(200).collect::<String>();
+    for (idx, line) in lines.iter().enumerate().take(to).skip(from) {
+        let display = line.chars().take(200).collect::<String>();
         snippet.push_str(&format!("{:>5} | {}\n", idx + 1, display));
     }
     snippet

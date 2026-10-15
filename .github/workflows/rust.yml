@@ -22,6 +22,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --all-targets
+      - name: Self-check
+        run: |
+          cargo run --quiet -- check
+          cargo run --quiet -- show markref.scan
+          cargo run --quiet -- context markref.cli --json --max-bytes 8000
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
