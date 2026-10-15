@@ -52,18 +52,19 @@ enum Syntax {
 fn syntax_for(path: &str) -> Option<Syntax> {
     let path = Path::new(path);
     let name = path.file_name()?.to_str()?.to_ascii_lowercase();
-    if matches!(name.as_str(), "dockerfile" | "makefile" | "justfile" | ".env.example") {
+    if matches!(
+        name.as_str(),
+        "dockerfile" | "makefile" | "justfile" | ".env.example"
+    ) {
         return Some(Syntax::Hash);
     }
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     match ext.as_str() {
-        "rs" | "go" | "c" | "cc" | "cpp" | "h" | "hpp" | "js" | "jsx"
-        | "ts" | "tsx" | "java" | "kt" | "kts" | "swift" | "cs" | "dart"
-        | "php" | "scala" | "zig" | "css" | "scss" | "less" | "m" | "mm" => {
-            Some(Syntax::Slash)
-        }
-        "py" | "sh" | "bash" | "zsh" | "rb" | "pl" | "r" | "yml" | "yaml"
-        | "toml" | "ini" | "conf" | "nix" | "tf" => Some(Syntax::Hash),
+        "rs" | "go" | "c" | "cc" | "cpp" | "h" | "hpp" | "js" | "jsx" | "ts" | "tsx" | "java"
+        | "kt" | "kts" | "swift" | "cs" | "dart" | "php" | "scala" | "zig" | "css" | "scss"
+        | "less" | "m" | "mm" => Some(Syntax::Slash),
+        "py" | "sh" | "bash" | "zsh" | "rb" | "pl" | "r" | "yml" | "yaml" | "toml" | "ini"
+        | "conf" | "nix" | "tf" => Some(Syntax::Hash),
         "sql" | "lua" => Some(Syntax::Dash),
         "html" | "htm" | "xml" | "svg" => Some(Syntax::Html),
         _ => None,
@@ -83,7 +84,10 @@ pub fn scan_project(
         .output()
         .context("failed to start git; install Git and try again")?;
     if !root_output.status.success() {
-        bail!("not a Git worktree: {} (use --root with a Git project)", start.display());
+        bail!(
+            "not a Git worktree: {} (use --root with a Git project)",
+            start.display()
+        );
     }
     let root = PathBuf::from(
         String::from_utf8(root_output.stdout)
@@ -92,7 +96,9 @@ pub fn scan_project(
     );
 
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(&root).args(["ls-files", "-z", "--cached", "--full-name"]);
+    cmd.arg("-C")
+        .arg(&root)
+        .args(["ls-files", "-z", "--cached", "--full-name"]);
     if include_untracked {
         cmd.args(["--others", "--exclude-standard"]);
     }
@@ -105,7 +111,9 @@ pub fn scan_project(
         );
     }
 
-    let mut filenames = output.stdout.split(|byte| *byte == 0)
+    let mut filenames = output
+        .stdout
+        .split(|byte| *byte == 0)
         .filter(|part| !part.is_empty())
         .map(|part| String::from_utf8(part.to_vec()).context("non-UTF-8 filename in Git index"))
         .collect::<Result<Vec<_>>>()?;
@@ -113,7 +121,8 @@ pub fn scan_project(
     filenames.dedup();
     filenames.retain(|path| syntax_for(path).is_some());
 
-    let mut scanned = filenames.par_iter()
+    let mut scanned = filenames
+        .par_iter()
         .map(|path| scan_file(&root, path, max_file_bytes, include_snippets))
         .collect::<Vec<_>>();
     let mut marks = Vec::new();
@@ -128,7 +137,12 @@ pub fn scan_project(
     }
     marks.sort_by(|a, b| (&a.path, a.line, &a.label).cmp(&(&b.path, b.line, &b.label)));
     diagnostics.sort_by(|a, b| (&a.path, a.line).cmp(&(&b.path, b.line)));
-    Ok(Report { root, files_scanned, marks, diagnostics })
+    Ok(Report {
+        root,
+        files_scanned,
+        marks,
+        diagnostics,
+    })
 }
 
 #[derive(Default)]
@@ -138,8 +152,18 @@ struct FileResult {
     diagnostics: Vec<Diagnostic>,
 }
 
-fn diagnostic(path: &str, line: usize, severity: &'static str, message: impl Into<String>) -> Diagnostic {
-    Diagnostic { path: path.to_owned(), line, severity, message: message.into() }
+fn diagnostic(
+    path: &str,
+    line: usize,
+    severity: &'static str,
+    message: impl Into<String>,
+) -> Diagnostic {
+    Diagnostic {
+        path: path.to_owned(),
+        line,
+        severity,
+        message: message.into(),
+    }
 }
 
 fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> FileResult {
@@ -149,7 +173,8 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
         Ok(m) => m,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return out,
         Err(err) => {
-            out.diagnostics.push(diagnostic(path, 0, "error", format!("stat failed: {err}")));
+            out.diagnostics
+                .push(diagnostic(path, 0, "error", format!("stat failed: {err}")));
             return out;
         }
     };
@@ -158,14 +183,18 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
     }
     if metadata.len() > limit {
         out.diagnostics.push(diagnostic(
-            path, 0, "warning", format!("file exceeds --max-file-bytes ({limit})"),
+            path,
+            0,
+            "warning",
+            format!("file exceeds --max-file-bytes ({limit})"),
         ));
         return out;
     }
     let data = match fs::read(&full_path) {
         Ok(data) => data,
         Err(err) => {
-            out.diagnostics.push(diagnostic(path, 0, "error", format!("read failed: {err}")));
+            out.diagnostics
+                .push(diagnostic(path, 0, "error", format!("read failed: {err}")));
             return out;
         }
     };
@@ -176,7 +205,12 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
     let source = match std::str::from_utf8(&data) {
         Ok(s) => s,
         Err(_) => {
-            out.diagnostics.push(diagnostic(path, 0, "warning", "non-UTF-8 file containing @mark"));
+            out.diagnostics.push(diagnostic(
+                path,
+                0,
+                "warning",
+                "non-UTF-8 file containing @mark",
+            ));
             return out;
         }
     };
@@ -198,7 +232,10 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
                     let target = find_target(&lines, idx, span.comment_start, syntax);
                     if target.is_none() {
                         out.diagnostics.push(diagnostic(
-                            path, idx + 1, "error", "mark has no nearby code target (within 24 lines)",
+                            path,
+                            idx + 1,
+                            "error",
+                            "mark has no nearby code target (within 24 lines)",
                         ));
                     }
                     let symbol = target.and_then(|target_idx| symbol_from_line(lines[target_idx]));
@@ -218,7 +255,9 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
                         },
                     });
                 }
-                Err(error) => out.diagnostics.push(diagnostic(path, idx + 1, "error", error)),
+                Err(error) => out
+                    .diagnostics
+                    .push(diagnostic(path, idx + 1, "error", error)),
             }
         }
     }
@@ -235,8 +274,13 @@ fn valid_label(s: &str) -> bool {
     s.len() <= 128
         && s.split('.').all(|part| {
             !part.is_empty()
-                && part.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
-                && part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+                && part
+                    .bytes()
+                    .next()
+                    .is_some_and(|b| b.is_ascii_alphanumeric())
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
         })
 }
 
@@ -246,10 +290,16 @@ fn parse_mark(s: &str) -> std::result::Result<Fields, String> {
     if !valid_label(label) {
         return Err(format!("invalid label: {label} (use dot-separated words)"));
     }
-    let mut fields = Fields { label: label.to_owned(), role: None, contract: None };
+    let mut fields = Fields {
+        label: label.to_owned(),
+        role: None,
+        contract: None,
+    };
     let mut seen = HashSet::new();
     for item in words {
-        let (key, value) = item.split_once('=').ok_or_else(|| format!("invalid field: {item} (expected key=value)"))?;
+        let (key, value) = item
+            .split_once('=')
+            .ok_or_else(|| format!("invalid field: {item} (expected key=value)"))?;
         if value.is_empty() {
             return Err(format!("empty value for {key}"));
         }
@@ -286,7 +336,12 @@ struct Lexer {
 
 impl Lexer {
     fn new(syntax: Syntax, rust: bool) -> Self {
-        Self { syntax, rust, block_end: None, quote: None }
+        Self {
+            syntax,
+            rust,
+            block_end: None,
+            quote: None,
+        }
     }
 
     fn comments(&mut self, line: &str) -> Vec<Span> {
@@ -297,12 +352,20 @@ impl Lexer {
             if let Some(end) = self.block_end {
                 if let Some(offset) = memmem::find(&bytes[i..], end) {
                     let stop = i + offset;
-                    result.push(Span { comment_start: i, start: i, end: stop });
+                    result.push(Span {
+                        comment_start: i,
+                        start: i,
+                        end: stop,
+                    });
                     i = stop + end.len();
                     self.block_end = None;
                     continue;
                 }
-                result.push(Span { comment_start: i, start: i, end: bytes.len() });
+                result.push(Span {
+                    comment_start: i,
+                    start: i,
+                    end: bytes.len(),
+                });
                 break;
             }
             if let Some(quote) = self.quote {
@@ -340,10 +403,18 @@ impl Lexer {
                 let start = i + width;
                 if let Some(offset) = memmem::find(&bytes[start..], end) {
                     let stop = start + offset;
-                    result.push(Span { comment_start: i, start, end: stop });
+                    result.push(Span {
+                        comment_start: i,
+                        start,
+                        end: stop,
+                    });
                     i = stop + end.len();
                 } else {
-                    result.push(Span { comment_start: i, start, end: bytes.len() });
+                    result.push(Span {
+                        comment_start: i,
+                        start,
+                        end: bytes.len(),
+                    });
                     self.block_end = Some(end);
                     break;
                 }
@@ -356,21 +427,26 @@ impl Lexer {
                 Syntax::Html => None,
             };
             if let Some(width) = line_comment {
-                result.push(Span { comment_start: i, start: i + width, end: bytes.len() });
+                result.push(Span {
+                    comment_start: i,
+                    start: i + width,
+                    end: bytes.len(),
+                });
                 break;
             }
             let delimiter = bytes[i];
             if delimiter == b'"' || delimiter == b'\'' || delimiter == b'\x60' {
                 if self.rust && delimiter == b'\'' {
                     let char_literal = bytes.get(i + 2) == Some(&b'\'')
-                        || (bytes.get(i + 1) == Some(&b'\\')
-                            && bytes.get(i + 3) == Some(&b'\''));
+                        || (bytes.get(i + 1) == Some(&b'\\') && bytes.get(i + 3) == Some(&b'\''));
                     if !char_literal {
                         i += 1;
                         continue;
                     }
                 }
-                if matches!(self.syntax, Syntax::Hash) && bytes[i..].starts_with(&[delimiter, delimiter, delimiter]) {
+                if matches!(self.syntax, Syntax::Hash)
+                    && bytes[i..].starts_with(&[delimiter, delimiter, delimiter])
+                {
                     self.quote = Some(Quote::Triple(delimiter));
                     i += 3;
                 } else {
@@ -391,15 +467,26 @@ fn is_comment_only(line: &str, syntax: Syntax) -> bool {
         return true;
     }
     match syntax {
-        Syntax::Slash => s.starts_with("//") || s.starts_with("/*") || s.starts_with('*') || s == "*/",
+        Syntax::Slash => {
+            s.starts_with("//") || s.starts_with("/*") || s.starts_with('*') || s == "*/"
+        }
         Syntax::Hash => s.starts_with('#'),
         Syntax::Dash => s.starts_with("--"),
         Syntax::Html => s.starts_with("<!--") || s.starts_with("-->") || s.starts_with('*'),
     }
 }
 
-fn find_target(lines: &[&str], marker_idx: usize, comment_start: usize, syntax: Syntax) -> Option<usize> {
-    if lines[marker_idx][..comment_start].trim().chars().any(|c| c.is_alphanumeric()) {
+fn find_target(
+    lines: &[&str],
+    marker_idx: usize,
+    comment_start: usize,
+    syntax: Syntax,
+) -> Option<usize> {
+    if lines[marker_idx][..comment_start]
+        .trim()
+        .chars()
+        .any(|c| c.is_alphanumeric())
+    {
         return Some(marker_idx);
     }
     for idx in marker_idx + 1..lines.len().min(marker_idx + 25) {
@@ -418,13 +505,19 @@ fn find_target(lines: &[&str], marker_idx: usize, comment_start: usize, syntax: 
 fn plain_comment(line: &str, syntax: Syntax) -> Option<&str> {
     let s = line.trim();
     let s = match syntax {
-        Syntax::Slash => s.strip_prefix("//").or_else(|| s.strip_prefix("/*"))
+        Syntax::Slash => s
+            .strip_prefix("//")
+            .or_else(|| s.strip_prefix("/*"))
             .or_else(|| s.strip_prefix('*')),
         Syntax::Hash => s.strip_prefix('#'),
         Syntax::Dash => s.strip_prefix("--"),
         Syntax::Html => s.strip_prefix("<!--").or_else(|| s.strip_prefix('*')),
     }?;
-    let s = s.trim().trim_end_matches("*/").trim_end_matches("-->").trim();
+    let s = s
+        .trim()
+        .trim_end_matches("*/")
+        .trim_end_matches("-->")
+        .trim();
     if s.is_empty() || s.starts_with("@mark") {
         None
     } else {
@@ -457,23 +550,49 @@ fn nearby_summary(lines: &[&str], marker_idx: usize, syntax: Syntax) -> Option<S
 fn symbol_from_line(line: &str) -> Option<String> {
     let mut s = line.trim();
     loop {
-        let next = ["pub(crate) ", "pub(super) ", "pub ", "async ", "export ", "default ", "static ", "final "]
-            .iter().find_map(|prefix| s.strip_prefix(prefix));
+        let next = [
+            "pub(crate) ",
+            "pub(super) ",
+            "pub ",
+            "async ",
+            "export ",
+            "default ",
+            "static ",
+            "final ",
+        ]
+        .iter()
+        .find_map(|prefix| s.strip_prefix(prefix));
         match next {
             Some(stripped) => s = stripped,
             None => break,
         }
     }
-    for prefix in ["fn ", "func ", "def ", "function ", "class ", "struct ", "enum ",
-        "interface ", "trait ", "impl ", "type ", "const ", "let ", "var "] {
+    for prefix in [
+        "fn ",
+        "func ",
+        "def ",
+        "function ",
+        "class ",
+        "struct ",
+        "enum ",
+        "interface ",
+        "trait ",
+        "impl ",
+        "type ",
+        "const ",
+        "let ",
+        "var ",
+    ] {
         if let Some(rest) = s.strip_prefix(prefix) {
             let rest = if prefix == "func " && rest.starts_with('(') {
                 rest.split_once(')')?.1.trim_start()
             } else {
                 rest
             };
-            let name = rest.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.'))
-                .next().unwrap_or("");
+            let name = rest
+                .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.'))
+                .next()
+                .unwrap_or("");
             if !name.is_empty() {
                 return Some(name.to_owned());
             }
@@ -503,7 +622,9 @@ pub fn matches_query(mark: &Mark, query: &str) -> bool {
         mark.role.as_deref(),
         mark.contract.as_deref(),
     ]
-    .into_iter().flatten().any(|field| field.to_lowercase().contains(&query))
+    .into_iter()
+    .flatten()
+    .any(|field| field.to_lowercase().contains(&query))
 }
 
 #[cfg(test)]
@@ -545,8 +666,11 @@ mod tests {
 
     #[test]
     fn supports_hash_comments_and_chinese_search() {
-        let result = scan_text("# 退款接口\n# @mark payments.refund role=caller\n\
-             def refund():\n    return True\n", "sample.py");
+        let result = scan_text(
+            "# 退款接口\n# @mark payments.refund role=caller\n\
+             def refund():\n    return True\n",
+            "sample.py",
+        );
         assert_eq!(result.marks.len(), 1);
         assert!(matches_query(&result.marks[0], "退款"));
         assert_eq!(result.marks[0].symbol.as_deref(), Some("refund"));

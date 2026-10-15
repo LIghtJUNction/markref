@@ -7,7 +7,11 @@ use clap::{Parser, Subcommand};
 use scan::{Mark, Report};
 
 #[derive(Parser)]
-#[command(name = "markref", version, about = "Locate shared feature marks in source comments")]
+#[command(
+    name = "markref",
+    version,
+    about = "Locate shared feature marks in source comments"
+)]
 struct Cli {
     /// Directory within the Git project to scan.
     #[arg(long, global = true, default_value = ".", value_name = "DIR")]
@@ -37,9 +41,7 @@ enum Commands {
         query: String,
     },
     /// Show every location sharing an exact feature label.
-    Show {
-        label: String,
-    },
+    Show { label: String },
     /// Report invalid marks and marks without a nearby code target.
     Check,
     /// Show a compact map of all locations for a feature.
@@ -75,7 +77,9 @@ fn run() -> Result<()> {
 
     match cli.command {
         Commands::Find { query } => {
-            let found: Vec<&Mark> = report.marks.iter()
+            let found: Vec<&Mark> = report
+                .marks
+                .iter()
                 .filter(|mark| scan::matches_query(mark, &query))
                 .collect();
             if found.is_empty() {
@@ -88,7 +92,11 @@ fn run() -> Result<()> {
             print_marks(&found, cli.json)?;
         }
         Commands::Check => {
-            let errors = report.diagnostics.iter().filter(|d| d.severity == "error").count();
+            let errors = report
+                .diagnostics
+                .iter()
+                .filter(|d| d.severity == "error")
+                .count();
             let warnings = report.diagnostics.len() - errors;
             if cli.json {
                 let value = serde_json::json!({
@@ -108,14 +116,21 @@ fn run() -> Result<()> {
                 }
                 println!(
                     "{} marks in {} files; {} errors, {} warnings",
-                    report.marks.len(), report.files_scanned, errors, warnings
+                    report.marks.len(),
+                    report.files_scanned,
+                    errors,
+                    warnings
                 );
             }
             if errors != 0 {
                 bail!("mark validation failed");
             }
         }
-        Commands::Context { label, max_bytes, expand } => {
+        Commands::Context {
+            label,
+            max_bytes,
+            expand,
+        } => {
             if max_bytes < 64 {
                 bail!("--max-bytes must be at least 64");
             }
@@ -131,7 +146,9 @@ fn run() -> Result<()> {
 }
 
 fn by_label<'a>(report: &'a Report, label: &str) -> Result<Vec<&'a Mark>> {
-    let found: Vec<&Mark> = report.marks.iter()
+    let found: Vec<&Mark> = report
+        .marks
+        .iter()
         .filter(|mark| mark.label == label)
         .collect();
     if found.is_empty() {
@@ -161,7 +178,8 @@ fn print_marks(marks: &[&Mark], json: bool) -> Result<()> {
 fn print_context_text(label: &str, marks: &[&Mark], max_bytes: usize, expand: bool) {
     let mut output = format!("{label} ({} locations)\n", marks.len());
     for mark in marks {
-        let target = mark.target_line
+        let target = mark
+            .target_line
             .map_or_else(|| "unbound".to_owned(), |line| line.to_string());
         output.push_str(&format!(
             "\n{}:{} -> {}  role={}  contract={}  symbol={}\n",
@@ -224,7 +242,11 @@ fn clamp_utf8(output: &mut String, max_bytes: usize) {
     }
     let suffix = "\n[truncated]\n";
     let with_suffix = max_bytes >= suffix.len();
-    let mut keep = if with_suffix { max_bytes - suffix.len() } else { max_bytes };
+    let mut keep = if with_suffix {
+        max_bytes - suffix.len()
+    } else {
+        max_bytes
+    };
     while !output.is_char_boundary(keep) {
         keep -= 1;
     }
