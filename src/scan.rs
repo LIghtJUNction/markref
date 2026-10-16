@@ -318,6 +318,7 @@ fn parse_mark(s: &str) -> std::result::Result<Fields, String> {
 enum Quote {
     Simple(u8),
     Triple(u8),
+    RustRaw(usize),
 }
 
 struct Span {
@@ -343,6 +344,7 @@ impl Lexer {
         }
     }
 
+    // @mark markref.comment-lexer role=implementation
     fn comments(&mut self, line: &str) -> Vec<Span> {
         let bytes = line.as_bytes();
         let mut i = 0;
@@ -375,6 +377,18 @@ impl Lexer {
                         } else if bytes[i] == delimiter {
                             self.quote = None;
                             i += 1;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    Quote::RustRaw(hashes) => {
+                        if bytes[i] == b'"'
+                            && bytes[i + 1..]
+                                .get(..hashes)
+                                .is_some_and(|end| end.iter().all(|&b| b == b'#'))
+                        {
+                            self.quote = None;
+                            i += 1 + hashes;
                         } else {
                             i += 1;
                         }
@@ -432,6 +446,24 @@ impl Lexer {
                     end: bytes.len(),
                 });
                 break;
+            }
+            // Raw Rust strings close only at a quote with the matching hash count.
+            // Quotes and backslashes inside their body do not change lexer state.
+            if self.rust && bytes[i] == b'r' {
+                let mut prefix = i;
+                if prefix > 0 && matches!(bytes[prefix - 1], b'b' | b'c') {
+                    prefix -= 1;
+                }
+                let boundary = prefix == 0
+                    || !(bytes[prefix - 1].is_ascii_alphanumeric()
+                        || bytes[prefix - 1] == b'_'
+                        || bytes[prefix - 1] >= 128);
+                let hashes = bytes[i + 1..].iter().take_while(|&&b| b == b'#').count();
+                if boundary && bytes.get(i + 1 + hashes) == Some(&b'"') {
+                    self.quote = Some(Quote::RustRaw(hashes));
+                    i += 2 + hashes;
+                    continue;
+                }
             }
             let delimiter = bytes[i];
             if delimiter == b'"' || delimiter == b'\'' || delimiter == b'\x60' {
@@ -666,6 +698,12 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join(path), text).unwrap();
         scan_file(&dir, path, 1024 * 1024, true)
+    }
+
+    #[test]
+    fn raw_string_closes_before_real_mark() {
+        let result = scan_text("let example = r\"ends in backslash \\\";\n// @mark actual.raw role=test\nfn actual() {}\n", "raw_closing.rs");
+        assert_eq!(result.marks.len(), 1, "{:?}", result.diagnostics);
     }
 
     #[test]

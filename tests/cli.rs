@@ -297,3 +297,46 @@ fn navigation_warns_about_invalid_marks_without_corrupting_json() {
         assert!(warning.contains("markref check"), "{warning}");
     }
 }
+
+// @mark markref.comment-lexer role=test
+#[test]
+fn rust_raw_strings_do_not_create_marks_or_hide_real_comments() {
+    let root = project();
+    for (index, literal) in [
+        "r\"ends in backslash \\\"",
+        "r#\"embedded \" // @mark phantom\nnot_a_function();\n\"#",
+        "r##\"partial \"# // @mark phantom\nnot_a_function();\n\"##",
+        "cr#\"embedded \" // @mark phantom\nnot_a_function();\n\"#",
+        "br#\"embedded \" // @mark phantom\nnot_a_function();\n\"#",
+        "r#\"ends in backslash \\\"#",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let source =
+            format!("let example = {literal};\n// @mark actual.raw role=test\nfn actual() {{}}\n");
+        fs::write(root.path().join("src/raw.rs"), source).unwrap();
+        git(root.path(), &["add", "src/raw.rs"]);
+        let output = run(root.path(), &["show", "actual.raw", "--json"]);
+        assert!(
+            output.status.success(),
+            "case {index} source={literal:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let marks: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(marks.as_array().unwrap().len(), 1, "case {index}");
+        assert_eq!(marks[0]["symbol"], "actual", "case {index}");
+        let phantom = run(root.path(), &["show", "phantom"]);
+        assert!(
+            !phantom.status.success(),
+            "case {index}: {}",
+            stdout(&phantom)
+        );
+        let checked = run(root.path(), &["check", "--json"]);
+        assert!(
+            checked.status.success(),
+            "case {index}: {}",
+            stdout(&checked)
+        );
+    }
+}

@@ -116,7 +116,9 @@ Go, C/C++, JavaScript/TypeScript and similar files; hash comments for
 Python, shell and configuration files; double-dash comments for SQL
 and Lua; and HTML-style comments for HTML/XML/SVG. Only recognized
 source extensions are scanned. The lexer is not a complete language
-parser, and unusual string syntax can cause false matches.
+parser, and unusual string syntax can cause false matches. Rust raw strings
+(including byte and C string prefixes) use their matching quote/hash delimiter,
+so embedded quotes and backslashes do not create marks or hide later comments.
 
 A standalone mark attaches to following code within 24 lines.
 An inline mark attaches to code before its comment.

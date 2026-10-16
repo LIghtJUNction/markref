@@ -67,6 +67,8 @@ cp LICENSE.txt UPSTREAM.toml "${CODEX_HOME:-$HOME/.codex}/skills/markref/"
 快速扫描 `@mark` 字节串，只有候选文件才解析注释；不同文件并行处理。
 第一版不保存持久索引，行号来自本次扫描。相邻注释和符号关联
 采用轻量规则，不是完整语法分析，也不能证明 RPC 已经接通。
+Rust 原始字符串（含字节、C 字符串前缀）按引号及井号结束符匹配，
+避免内部引号、反斜杠造成假标签或漏掉后续真标签。
 
 运行 `cargo test --all-targets` 执行测试。
 [性能实验设计](docs/benchmark.md) 说明后续需要验证的指标。
