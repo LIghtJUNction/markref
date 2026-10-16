@@ -33,7 +33,7 @@ If the label is unknown, start with `list`: it returns sorted feature labels,
 location counts and unique roles. It includes only scanned marks, not a list of
 all implemented features. Then use a compact context map. Expand only the relevant feature, then read
 its actual implementation, callers and tests. Byte limits are not token limits.
-Use JSON context's `truncated` flag to distinguish a complete result from a
+Use JSON context's `total_locations` count and `truncated` flag to distinguish a complete result from a
 bounded excerpt; even a nontruncated result covers only scanned marks.
 
 `find` searches mark metadata and adjacent comments, not every source line.

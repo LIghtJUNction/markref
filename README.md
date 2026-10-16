@@ -93,6 +93,8 @@ remains clean. Run `check --json` to inspect all errors and warnings.
 `check` returns a nonzero status when a mark is invalid or cannot bind
 to code. Repeated labels are valid and are not errors. `context` stays
 compact unless `--expand` is set; `--max-bytes` bounds stdout, not stderr diagnostics.
+JSON context includes `total_locations` for all scanned matches and `truncated`
+when the byte budget omits locations. The total does not include unscanned files.
 
 ## Scanning behavior
 

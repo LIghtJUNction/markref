@@ -144,6 +144,28 @@ fn context_is_bounded_and_expands_on_request() {
     assert!(json.status.success());
     let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
     assert!(value["truncated"].as_bool().unwrap());
+    assert_eq!(value["total_locations"], 3);
+    assert!(value["locations"].as_array().unwrap().len() < 3);
+    assert!(json.stdout.len() <= 300);
+    let full = run(root.path(), &["context", "payments.refund", "--json"]);
+    assert!(full.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&full.stdout).unwrap();
+    assert_eq!(value["total_locations"], 3);
+    assert_eq!(value["locations"].as_array().unwrap().len(), 3);
+    assert_eq!(value["truncated"], false);
+    let untracked = run(
+        root.path(),
+        &[
+            "context",
+            "payments.refund",
+            "--json",
+            "--include-untracked",
+        ],
+    );
+    assert!(untracked.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&untracked.stdout).unwrap();
+    assert_eq!(value["total_locations"], 4);
+    assert_eq!(value["locations"].as_array().unwrap().len(), 4);
 }
 
 #[test]

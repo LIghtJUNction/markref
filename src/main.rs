@@ -273,6 +273,7 @@ fn print_context_json(label: &str, marks: &[&Mark], max_bytes: usize) -> Result<
         included.push(mark);
         let candidate = serde_json::json!({
             "label": label,
+            "total_locations": marks.len(),
             "locations": included,
             "truncated": false
         });
@@ -285,6 +286,7 @@ fn print_context_json(label: &str, marks: &[&Mark], max_bytes: usize) -> Result<
     }
     let value = serde_json::json!({
         "label": label,
+        "total_locations": marks.len(),
         "locations": included,
         "truncated": truncated
     });
