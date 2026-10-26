@@ -63,6 +63,30 @@ A Python, Go, JavaScript, Rust, or SQL component can reuse the same label.
 The same `contract` means both marks refer to a named contract; it does
 **not** prove that calls have been connected or succeeded.
 
+## Fold region navigation
+
+Existing fold comments work without an additional `@mark`:
+
+~~~rust
+// @context-fold begin cache.refresh
+fn refresh() {}
+// @context-fold end cache.refresh
+~~~
+
+Use `markref show cache.refresh`, `find`, `list`, or `context` as usual.
+Names may contain any non-whitespace characters, including Unicode and `/`
+(e.g. `中文/区域`), and have no separate length limit beyond the scanned file limit.
+The stricter ASCII grammar and 128-character limit apply only to `@mark` labels.
+The syntax is exactly `@context-fold begin NAME` or `@context-fold end NAME`
+at the start of a recognized comment body; extra fields are rejected.
+Each boundary is an **independent navigation location** with its own comment
+as `target_line` and `fold_boundary` set to `begin` or `end` in text and JSON.
+A shared name groups locations, including ordinary `@mark` locations. It does
+not establish a matched pair, nesting, or a verified code range. Unpaired and
+repeated boundaries are allowed; `check` validates their syntax, not pairing,
+and does not require nearby code for them. `context --expand` shows the usual
+bounded excerpt around each boundary, not the entire folded region.
+
 ## Commands
 
 ~~~sh
@@ -106,7 +130,7 @@ honor standard Git exclusions, including `.gitignore`. Symbolic links,
 binary data, and files above 16 MiB are skipped by default. The size
 limit can be adjusted with `--max-file-bytes`.
 
-A fixed-byte search discards files without `@mark`. Only candidate
+A fixed-byte search discards files without `@mark` or `@context-fold`. Only candidate
 files pass through a lightweight comment lexer. Source files are read
 in parallel. v0.1 has **no persistent index or background daemon**,
 so old branch positions cannot be returned from a stale cache.

@@ -49,7 +49,7 @@ enum Commands {
     },
     /// Show every location sharing an exact feature label.
     Show { label: String },
-    /// Report invalid marks and marks without a nearby code target.
+    /// Report invalid markers and feature marks without a nearby code target.
     Check,
     /// Show a compact map of all locations for a feature.
     Context {
@@ -225,9 +225,13 @@ fn print_marks(marks: &[&Mark], json: bool) -> Result<()> {
             let role = mark.role.as_deref().unwrap_or("-");
             let contract = mark.contract.as_deref().unwrap_or("-");
             let summary = mark.summary.as_deref().unwrap_or("");
+            let boundary = mark
+                .fold_boundary
+                .map(|boundary| format!(" fold_boundary={boundary}"))
+                .unwrap_or_default();
             println!(
-                "{}:{}  {}  role={} contract={} symbol={} {}",
-                mark.path, mark.line, mark.label, role, contract, symbol, summary
+                "{}:{}  {}  role={} contract={} symbol={}{} {}",
+                mark.path, mark.line, mark.label, role, contract, symbol, boundary, summary
             );
         }
     }
@@ -240,14 +244,19 @@ fn print_context_text(label: &str, marks: &[&Mark], max_bytes: usize, expand: bo
         let target = mark
             .target_line
             .map_or_else(|| "unbound".to_owned(), |line| line.to_string());
+        let boundary = mark
+            .fold_boundary
+            .map(|boundary| format!("  fold_boundary={boundary}"))
+            .unwrap_or_default();
         output.push_str(&format!(
-            "\n{}:{} -> {}  role={}  contract={}  symbol={}\n",
+            "\n{}:{} -> {}  role={}  contract={}  symbol={}{}\n",
             mark.path,
             mark.line,
             target,
             mark.role.as_deref().unwrap_or("-"),
             mark.contract.as_deref().unwrap_or("-"),
-            mark.symbol.as_deref().unwrap_or("-")
+            mark.symbol.as_deref().unwrap_or("-"),
+            boundary
         ));
         if let Some(summary) = &mark.summary {
             output.push_str(summary);

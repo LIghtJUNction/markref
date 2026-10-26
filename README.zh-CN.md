@@ -19,6 +19,27 @@ fn request_refund() {}
 标签表示功能，不需要包含语言或目录名。最简单的形式是
 `// @mark payments.refund`，`role` 和 `contract` 都是可选字段。
 
+## 折叠区域导航
+
+已有的折叠注释可以直接使用，不必再添加 `@mark`：
+
+~~~rust
+// @context-fold begin cache.refresh
+fn refresh() {}
+// @context-fold end cache.refresh
+~~~
+
+用 `markref show cache.refresh`、`find`、`list` 或 `context` 导航。
+名称允许任意非空且不含空白的字符，包括中文和 `/`（如 `中文/区域`），
+不另设长度限制，仍受扫描文件大小限制。ASCII 标签格式和 128 字符上限只用于 `@mark`。
+注释正文须以 `@context-fold begin NAME` 或 `@context-fold end NAME` 开头，
+不接受额外字段。每个边界是**独立的导航位置**，`target_line` 指向注释自身，
+文本和 JSON 中用 `fold_boundary=begin/end` 区分边界类型。
+同名位置会聚合，也能与同名 `@mark` 共存；同名不代表已验证 begin/end 配对、
+嵌套关系或完整代码范围。允许孤立或重复边界，`check` 仅检查其格式，不检查配对，
+也不要求它们关联附近代码。`context --expand` 仍只输出边界附近的有限代码片段，
+不会展开整个折叠区域。
+
 ## 安装与使用
 
 ~~~sh
@@ -64,7 +85,7 @@ cp LICENSE.txt UPSTREAM.toml "${CODEX_HOME:-$HOME/.codex}/skills/markref/"
 `--include-untracked` 才加入未跟踪文件，但仍遵守 Git 忽略规则
 （包括 `.gitignore`）。不进入子模块，不跟随符号链接。
 
-快速扫描 `@mark` 字节串，只有候选文件才解析注释；不同文件并行处理。
+快速扫描 `@mark` 或 `@context-fold` 字节串，只有候选文件才解析注释；不同文件并行处理。
 第一版不保存持久索引，行号来自本次扫描。相邻注释和符号关联
 采用轻量规则，不是完整语法分析，也不能证明 RPC 已经接通。
 Rust 原始字符串（含字节、C 字符串前缀）按引号及井号结束符匹配，

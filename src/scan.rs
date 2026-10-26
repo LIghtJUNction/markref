@@ -15,6 +15,8 @@ pub struct Mark {
     pub line: usize,
     pub target_line: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub fold_boundary: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
@@ -198,7 +200,9 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
         }
     };
     out.read_ok = true;
-    if memmem::find(&data, b"@mark").is_none() || data.contains(&0) {
+    if (memmem::find(&data, b"@mark").is_none() && memmem::find(&data, b"@context-fold").is_none())
+        || data.contains(&0)
+    {
         return out;
     }
     let source = match std::str::from_utf8(&data) {
@@ -208,7 +212,7 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
                 path,
                 0,
                 "warning",
-                "non-UTF-8 file containing @mark",
+                "non-UTF-8 file containing navigation markers",
             ));
             return out;
         }
@@ -220,10 +224,28 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
         for span in lexer.comments(line) {
             let raw = line[span.start..span.end].trim();
             let raw = raw.strip_prefix('*').unwrap_or(raw).trim_start();
-            if !raw.starts_with("@mark") {
+            if marker_body(raw, "@context-fold").is_some() {
+                match parse_fold(raw) {
+                    Ok((label, boundary)) => out.marks.push(Mark {
+                        label,
+                        path: path.to_owned(),
+                        line: idx + 1,
+                        // A boundary navigates to its own comment, including an end at EOF.
+                        target_line: Some(idx + 1),
+                        fold_boundary: Some(boundary),
+                        symbol: None,
+                        role: None,
+                        contract: None,
+                        summary: nearby_summary(&lines, idx, syntax),
+                        snippet: include_snippets.then(|| code_snippet(&lines, idx, idx)),
+                    }),
+                    Err(error) => out
+                        .diagnostics
+                        .push(diagnostic(path, idx + 1, "error", error)),
+                }
                 continue;
             }
-            if !raw[5..].is_empty() && !raw.as_bytes()[5].is_ascii_whitespace() {
+            if marker_body(raw, "@mark").is_none() {
                 continue;
             }
             match parse_mark(raw) {
@@ -243,6 +265,7 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
                         path: path.to_owned(),
                         line: idx + 1,
                         target_line: target.map(|i| i + 1),
+                        fold_boundary: None,
                         symbol,
                         role: fields.role,
                         contract: fields.contract,
@@ -261,6 +284,29 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
         }
     }
     out
+}
+
+fn marker_body<'a>(raw: &'a str, marker: &str) -> Option<&'a str> {
+    let body = raw.strip_prefix(marker)?;
+    (body.is_empty() || body.as_bytes()[0].is_ascii_whitespace()).then_some(body)
+}
+
+fn parse_fold(raw: &str) -> std::result::Result<(String, &'static str), String> {
+    let mut words = marker_body(raw, "@context-fold")
+        .expect("recognized marker")
+        .split_whitespace();
+    let boundary = match words.next() {
+        Some("begin") => "begin",
+        Some("end") => "end",
+        _ => return Err("expected begin or end after @context-fold".to_owned()),
+    };
+    let label = words
+        .next()
+        .ok_or("missing name after @context-fold boundary")?;
+    if words.next().is_some() {
+        return Err("unexpected fields after @context-fold name".to_owned());
+    }
+    Ok((label.to_owned(), boundary))
 }
 
 struct Fields {
@@ -557,7 +603,10 @@ fn plain_comment(line: &str, syntax: Syntax) -> Option<&str> {
         .trim_end_matches("*/")
         .trim_end_matches("-->")
         .trim();
-    if s.is_empty() || s.starts_with("@mark") {
+    if s.is_empty()
+        || marker_body(s, "@mark").is_some()
+        || marker_body(s, "@context-fold").is_some()
+    {
         None
     } else {
         Some(s)
@@ -683,6 +732,7 @@ pub fn matches_query(mark: &Mark, query: &str) -> bool {
         mark.symbol.as_deref(),
         mark.role.as_deref(),
         mark.contract.as_deref(),
+        mark.fold_boundary,
     ]
     .into_iter()
     .flatten()
@@ -698,6 +748,88 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join(path), text).unwrap();
         scan_file(&dir, path, 1024 * 1024, true)
+    }
+
+    #[test]
+    fn fold_boundaries_are_independent_navigation_locations() {
+        let result = scan_text(
+            "// Region documentation\n// @context-fold begin shared.region\n// @context-fold end shared.region\n// @context-fold end standalone\n",
+            "fold_boundaries.rs",
+        );
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        assert_eq!(result.marks.len(), 3);
+        assert_eq!(result.marks[0].fold_boundary, Some("begin"));
+        assert_eq!(result.marks[1].fold_boundary, Some("end"));
+        assert_eq!(result.marks[2].label, "standalone");
+        for mark in &result.marks {
+            assert_eq!(mark.target_line, Some(mark.line));
+            assert!(mark.symbol.is_none());
+            assert_eq!(mark.summary.as_deref(), Some("Region documentation"));
+            assert!(!mark.snippet.as_ref().unwrap().is_empty());
+        }
+        assert!(matches_query(&result.marks[1], "end"));
+    }
+
+    #[test]
+    fn fold_markers_use_comment_lexer_and_token_boundaries() {
+        let rust = scan_text(
+            "let s = \"// @context-fold begin fake\";\nlet raw = r##\"quoted \" // @context-fold end fake\n\"##;\n// @context-folder begin ignored\n/* @context-fold begin real */\n/*\n * @context-fold end real\n */\n",
+            "fold_strings.rs",
+        );
+        assert!(rust.diagnostics.is_empty());
+        assert_eq!(rust.marks.len(), 2);
+        assert!(rust.marks.iter().all(|mark| mark.label == "real"));
+        for (path, source) in [
+            ("fold.py", "text = \"\"\"\n# @context-fold begin fake\n\"\"\"\n# @context-fold end real\n"),
+            ("fold.sql", "SELECT '-- @context-fold begin fake';\n-- @context-fold end real\n"),
+            ("fold.html", "<p title=\"<!-- @context-fold begin fake -->\"></p>\n<!-- @context-fold end real -->\n"),
+            ("fold.ts", "const s = `// @context-fold begin fake`;\n// @context-fold end real\n"),
+        ] {
+            let result = scan_text(source, path);
+            assert!(result.diagnostics.is_empty(), "{path}: {:?}", result.diagnostics);
+            assert_eq!(result.marks.len(), 1, "{path}");
+            assert_eq!(result.marks[0].label, "real");
+        }
+    }
+
+    #[test]
+    fn fold_names_accept_non_whitespace_without_mark_label_limits() {
+        for name in [
+            "中".to_owned(),
+            "中文/折叠区域".to_owned(),
+            "/path/to/region".to_owned(),
+            "bad..name".to_owned(),
+            "界".repeat(43),
+            "a".repeat(128),
+            "a".repeat(129),
+            "界/".repeat(2048),
+        ] {
+            for boundary in ["begin", "end"] {
+                let (label, parsed_boundary) =
+                    parse_fold(&format!("@context-fold {boundary} {name}")).unwrap();
+                assert_eq!(label, name);
+                assert_eq!(parsed_boundary, boundary);
+            }
+        }
+        for name in ["", " ", "\t", "\u{3000}", "two names", "two\u{3000}names"] {
+            assert!(parse_fold(&format!("@context-fold begin {name}")).is_err());
+        }
+        assert!(parse_mark("@mark 中文/折叠区域").is_err());
+        assert!(parse_mark(&format!("@mark {}", "a".repeat(129))).is_err());
+    }
+
+    #[test]
+    fn invalid_fold_syntax_reports_errors_without_locations() {
+        let result = scan_text(
+            "// @context-fold\n// @context-fold start a\n// @context-fold begin\n// @context-fold end\u{3000}\n// @context-fold begin good extra\n",
+            "fold_invalid.rs",
+        );
+        assert!(result.marks.is_empty());
+        assert_eq!(result.diagnostics.len(), 5);
+        assert!(result
+            .diagnostics
+            .iter()
+            .all(|item| item.severity == "error"));
     }
 
     #[test]

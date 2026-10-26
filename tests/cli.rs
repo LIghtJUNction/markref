@@ -68,6 +68,144 @@ fn stdout(output: &Output) -> String {
 }
 
 #[test]
+fn fold_comments_work_across_navigation_commands_and_scan_scope() {
+    let root = project();
+    let source = "// @context-fold begin navigation.fold\nfn example() {}\n// @context-fold end navigation.fold\n// @mark navigation.fold role=test\nfn test_example() {}\n";
+    fs::write(root.path().join("src/fold.rs"), source).unwrap();
+    fs::write(root.path().join("fold_extra.rs"), source).unwrap();
+    fs::write(root.path().join("vendor/fold.rs"), source).unwrap();
+    git(root.path(), &["add", "src/fold.rs"]);
+
+    let shown = run(root.path(), &["show", "navigation.fold", "--json"]);
+    assert!(shown.status.success());
+    let marks: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+    assert_eq!(marks.as_array().unwrap().len(), 3);
+    assert_eq!(marks[0]["fold_boundary"], "begin");
+    assert_eq!(marks[0]["target_line"], 1);
+    assert_eq!(marks[1]["fold_boundary"], "end");
+    assert_eq!(marks[1]["target_line"], 3);
+    assert!(marks[2].get("fold_boundary").is_none());
+    let text = run(root.path(), &["show", "navigation.fold"]);
+    assert!(stdout(&text).contains("fold_boundary=begin"));
+    assert!(stdout(&text).contains("fold_boundary=end"));
+    let found = run(root.path(), &["find", "begin", "--json"]);
+    let marks: serde_json::Value = serde_json::from_slice(&found.stdout).unwrap();
+    assert_eq!(marks.as_array().unwrap().len(), 1);
+    let listed = run(root.path(), &["list", "--json"]);
+    let labels: serde_json::Value = serde_json::from_slice(&listed.stdout).unwrap();
+    let label = labels
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["label"] == "navigation.fold")
+        .unwrap();
+    assert_eq!(label["locations"], 3);
+    assert!(run(root.path(), &["check"]).status.success());
+
+    let untracked = run(
+        root.path(),
+        &["--include-untracked", "show", "navigation.fold", "--json"],
+    );
+    let marks: serde_json::Value = serde_json::from_slice(&untracked.stdout).unwrap();
+    assert_eq!(marks.as_array().unwrap().len(), 6);
+    assert!(marks
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| !item["path"].as_str().unwrap().starts_with("vendor/")));
+    for json in [false, true] {
+        let mut args = vec![
+            "context",
+            "navigation.fold",
+            "--expand",
+            "--max-bytes",
+            "300",
+        ];
+        if json {
+            args.push("--json");
+        }
+        let context = run(root.path(), &args);
+        assert!(context.status.success());
+        assert!(context.stdout.len() <= 300);
+        assert!(std::str::from_utf8(&context.stdout).is_ok());
+        if json {
+            let value: serde_json::Value = serde_json::from_slice(&context.stdout).unwrap();
+            assert_eq!(value["total_locations"], 3);
+            assert_eq!(value["truncated"], true);
+        }
+    }
+    let context = run(root.path(), &["context", "navigation.fold", "--expand"]);
+    assert!(stdout(&context).contains("fold_boundary=end"));
+    assert!(stdout(&context).contains("fn example()"));
+    assert_eq!(
+        fs::read_to_string(root.path().join("src/fold.rs")).unwrap(),
+        source
+    );
+}
+
+#[test]
+fn unicode_and_long_fold_names_support_exact_navigation_and_bounded_context() {
+    let root = project();
+    for name in [
+        "中文/区域".to_owned(),
+        "x".repeat(128),
+        "x".repeat(129),
+        "界/".repeat(1024),
+    ] {
+        let source = format!("// @context-fold begin {name}\n// @context-fold end {name}\n");
+        fs::write(root.path().join("src/fold_names.rs"), source).unwrap();
+        git(root.path(), &["add", "src/fold_names.rs"]);
+        let shown = run(root.path(), &["show", &name, "--json"]);
+        assert!(
+            shown.status.success(),
+            "{}",
+            String::from_utf8_lossy(&shown.stderr)
+        );
+        let marks: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+        assert_eq!(marks.as_array().unwrap().len(), 2);
+        assert_eq!(marks[0]["label"], name);
+        assert_eq!(marks[1]["label"], name);
+        assert!(run(root.path(), &["check"]).status.success());
+        let text = run(root.path(), &["context", &name, "--max-bytes", "300"]);
+        assert!(text.status.success());
+        assert!(text.stdout.len() <= 300);
+        assert!(std::str::from_utf8(&text.stdout).is_ok());
+        // A long name is also part of the JSON header; reject too-small budgets
+        // cleanly rather than truncating JSON or exceeding the limit.
+        let budget = (name.len() * 2 + 300).to_string();
+        let json = run(
+            root.path(),
+            &["context", &name, "--json", "--max-bytes", &budget],
+        );
+        assert!(json.status.success());
+        assert!(json.stdout.len() <= budget.parse::<usize>().unwrap());
+        let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+        assert_eq!(value["label"], name);
+        assert_eq!(value["total_locations"], 2);
+    }
+}
+
+#[test]
+fn check_reports_bad_fold_syntax_but_accepts_unpaired_boundaries() {
+    let root = project();
+    fs::write(
+        root.path().join("src/fold.rs"),
+        "// @context-fold end alone\n// @context-fold begin\n",
+    )
+    .unwrap();
+    git(root.path(), &["add", "src/fold.rs"]);
+    let checked = run(root.path(), &["check", "--json"]);
+    assert!(!checked.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(value["errors"], 1);
+    assert_eq!(value["diagnostics"][0]["line"], 2);
+    assert!(value["diagnostics"][0]["message"]
+        .as_str()
+        .unwrap()
+        .contains("missing name"));
+}
+
+#[test]
 fn tracked_files_are_default_and_repeated_labels_are_allowed() {
     let root = project();
     let result = run(root.path(), &["show", "payments.refund"]);
