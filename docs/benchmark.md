@@ -36,7 +36,7 @@ Report failures and sample sizes. Remove secrets from traces.
 
 ## Important limitations
 
-The v0.1 comment lexer is not a full compiler parser.
+The comment lexer is not a full compiler parser.
 Include raw strings, nested comments, Unicode, renamed files,
 new/ignored files, and unsupported languages in the correctness suite.
 A faster result is not a benefit when correctness falls.

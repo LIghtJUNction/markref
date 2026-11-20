@@ -1,6 +1,6 @@
 # markref
 
-从代码注释中维护可共享、可校验的定位引用。使用 Rust 编写，第一版只读。
+从代码注释中维护可共享、可校验的定位引用。使用 Rust 编写的只读工具。
 
 [English](README.md) · [AUL 许可证](LICENSE.txt)
 
@@ -18,6 +18,12 @@ fn request_refund() {}
 同一标签可以在多个文件、语言和组件中重复出现，不算重复错误。
 标签表示功能，不需要包含语言或目录名。最简单的形式是
 `// @mark payments.refund`，`role` 和 `contract` 都是可选字段。
+
+功能标签最多包含 128 个 ASCII 字符，
+且由点号分隔的一个或多个非空分段组成。每个分段必须以 ASCII 字母或数字开头，
+后续字符仅允许为 ASCII 字母、数字、下划线（`_`）或连字符（`-`）。
+例如 `payments.refund`、`auth.v2.token_exchange` 与 `core.worker-pool` 为有效标签；
+`payments..refund`（含空分段）与 `payments._refund`（分段以下划线开头）会被拒绝。
 
 ## 折叠区域导航
 
@@ -86,7 +92,7 @@ cp LICENSE.txt UPSTREAM.toml "${CODEX_HOME:-$HOME/.codex}/skills/markref/"
 （包括 `.gitignore`）。不进入子模块，不跟随符号链接。
 
 快速扫描 `@mark` 或 `@context-fold` 字节串，只有候选文件才解析注释；不同文件并行处理。
-第一版不保存持久索引，行号来自本次扫描。相邻注释和符号关联
+markref 不保存持久索引，行号来自本次扫描。相邻注释和符号关联
 采用轻量规则，不是完整语法分析，也不能证明 RPC 已经接通。
 Rust 原始字符串（含字节、C 字符串前缀）按引号及井号结束符匹配，
 避免内部引号、反斜杠造成假标签或漏掉后续真标签。

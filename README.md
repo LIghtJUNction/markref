@@ -56,8 +56,14 @@ fn request_refund() {}
 The minimum syntax is `// @mark payments.refund`. All fields are
 optional. Supported fields are `role` and `contract`. Fields are
 space-separated `key=value` tokens without spaces in values.
-Feature labels use ASCII letters, digits, underscores, hyphens, and
-dots with no empty segments. Roles are user-defined.
+
+A feature label is at most 128 ASCII characters and consists of dot-separated,
+nonempty segments. Every segment starts with an ASCII letter or digit, and any
+subsequent characters in the segment must be ASCII letters, digits, underscores,
+or hyphens. For example, `payments.refund`, `auth.v2.token_exchange`, and
+`core.worker-pool` are valid labels; `payments..refund` (empty segment) and
+`payments._refund` (segment starting with an underscore) are rejected.
+Roles are user-defined.
 
 A Python, Go, JavaScript, Rust, or SQL component can reuse the same label.
 The same `contract` means both marks refer to a named contract; it does
@@ -132,7 +138,7 @@ limit can be adjusted with `--max-file-bytes`.
 
 A fixed-byte search discards files without `@mark` or `@context-fold`. Only candidate
 files pass through a lightweight comment lexer. Source files are read
-in parallel. v0.1 has **no persistent index or background daemon**,
+in parallel. markref has **no persistent index or background daemon**,
 so old branch positions cannot be returned from a stale cache.
 
 Supported comment styles: slash and block comments for common Rust,
