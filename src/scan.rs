@@ -219,7 +219,11 @@ fn scan_file(root: &Path, path: &str, limit: u64, include_snippets: bool) -> Fil
     };
     let lines: Vec<&str> = source.lines().collect();
     let syntax = syntax_for(path).expect("filtered by extension");
-    let mut lexer = Lexer::new(syntax, path.ends_with(".rs"));
+    let is_rust = Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"));
+    let mut lexer = Lexer::new(syntax, is_rust);
     for (idx, line) in lines.iter().enumerate() {
         for span in lexer.comments(line) {
             let raw = line[span.start..span.end].trim();
